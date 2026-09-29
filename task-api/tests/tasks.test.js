@@ -75,7 +75,7 @@ describe('Tasks API Integration Tests', () => {
       const task = taskService.create({ title: 'Priority Test' });
       const res = await request(app)
         .put(`/tasks/${task.id}`)
-        .send({ priority: 'urgent' }); // 'urgent' is not a valid priority
+        .send({ priority: 'urgent' });
       expect(res.status).toBe(400);
     });
   });
@@ -129,8 +129,6 @@ describe('Tasks API Integration Tests', () => {
       expect(res.body).toEqual({ todo: 0, in_progress: 0, done: 0, overdue: 0 });
     });
 
-    // The stats endpoint doesn't accept inputs, limiting standard edge cases.
-    // Instead, we test edge cases in data state.
     it('correctly ignores tasks without due dates when calculating overdue (Edge Case 1)', async () => {
       taskService.create({ title: 'No Due Date', status: 'todo' });
       const res = await request(app).get('/tasks/stats');
@@ -142,6 +140,56 @@ describe('Tasks API Integration Tests', () => {
       taskService.create({ title: 'Past but done', status: 'done', dueDate: pastDate });
       const res = await request(app).get('/tasks/stats');
       expect(res.body.overdue).toBe(0);
+    });
+  });
+
+  describe('PATCH /tasks/:id/assign', () => {
+    it('returns 200 and assigns a user to a task (Happy Path)', async () => {
+      const task = taskService.create({ title: 'Task to assign' });
+      const res = await request(app)
+        .patch(`/tasks/${task.id}/assign`)
+        .send({ assignee: 'Alice' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.assignee).toBe('Alice');
+      expect(res.body.id).toBe(task.id);
+    });
+
+    it('returns 404 if the task does not exist', async () => {
+      const res = await request(app)
+        .patch('/tasks/non-existent-id/assign')
+        .send({ assignee: 'Alice' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Task not found');
+    });
+
+    it('returns 400 when assignee is missing or empty string', async () => {
+      const task = taskService.create({ title: 'Task to assign' });
+      
+      const emptyRes = await request(app)
+        .patch(`/tasks/${task.id}/assign`)
+        .send({ assignee: '   ' });
+      expect(emptyRes.status).toBe(400);
+
+      const missingRes = await request(app)
+        .patch(`/tasks/${task.id}/assign`)
+        .send({});
+      expect(missingRes.status).toBe(400);
+    });
+
+    it('returns 200 and successfully reassigns an already assigned task', async () => {
+      const task = taskService.create({ title: 'Task to reassign' });
+      await request(app)
+        .patch(`/tasks/${task.id}/assign`)
+        .send({ assignee: 'Alice' });
+
+      const res = await request(app)
+        .patch(`/tasks/${task.id}/assign`)
+        .send({ assignee: 'Bob' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.assignee).toBe('Bob');
     });
   });
 });
